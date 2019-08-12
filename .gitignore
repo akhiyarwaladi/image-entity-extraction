@@ -1,0 +1,16 @@
+*.pyc
+*.jpg
+*.jpeg
+*.png
+*.finish
+*.pcount
+*.psum
+*.log*
+*.h5
+*.json
+*.csv
+*.DS_Store
+*.index
+*.pb
+*.data*
+*.meta
