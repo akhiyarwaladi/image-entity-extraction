@@ -35,6 +35,7 @@ import sys
 import math
 import pickle
 from sklearn.svm import SVC
+from confusion_matrix import plot_confusion_matrix
 
 def main(args):
   
@@ -118,8 +119,13 @@ def main(args):
                 for i in range(len(best_class_indices)):
                     print('%4d  %s: %.3f' % (i, class_names[best_class_indices[i]], best_class_probabilities[i]))
                     
+                print(class_names)
                 accuracy = np.mean(np.equal(best_class_indices, labels))
                 print('Accuracy: %.3f' % accuracy)
+                fig, ax = plot_confusion_matrix(best_class_indices, labels, classes=np.array(class_names),
+                      title='Confusion matrix, without normalization')
+                fig.savefig('full_figure.png')
+
                 
             
 def split_dataset(dataset, min_nrof_images_per_class, nrof_train_images_per_class):

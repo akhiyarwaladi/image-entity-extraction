@@ -14,6 +14,7 @@ import numpy as np
 import cv2
 import collections
 from sklearn.svm import SVC 
+from detect_faces import detect_face, detect_tiny_face
 
 def main(): 
     parser = argparse.ArgumentParser()
@@ -25,7 +26,7 @@ def main():
     FACTOR = 0.709
     IMAGE_SIZE = 182
     INPUT_IMAGE_SIZE = 160
-    CLASSIFIER_PATH = 'Models/Entity/Entity.pkl'
+    CLASSIFIER_PATH = 'Models/Entity/Entity_sample_nounknown.pkl'
     VIDEO_PATH = args.path
     FACENET_MODEL_PATH = 'Models/facenet/20180402-114759.pb'
     
@@ -65,8 +66,15 @@ def main():
             # ret, frame = cap.read()
             
             frame = cv2.imread(VIDEO_PATH)
-            bounding_boxes, _ = align.detect_face.detect_face(frame, MINSIZE, pnet, rnet, onet, THRESHOLD, FACTOR)
+
             
+            # bounding_boxes, _ = align.detect_face.detect_face(frame, MINSIZE, pnet, rnet, onet, THRESHOLD, FACTOR)
+            # bounding_boxes = detect_tiny_face(frame)
+            bounding_boxes = detect_face(frame)
+
+            print(bounding_boxes)
+            print(len(bounding_boxes))
+            print(bounding_boxes.shape)
             faces_found = bounding_boxes.shape[0]
             try:
                 if faces_found > 0:
@@ -95,7 +103,7 @@ def main():
                         text_x = bb[i][0]
                         text_y = bb[i][3] + 20  
                         
-                        if best_class_probabilities > 0.9:
+                        if best_class_probabilities > 0.5:
                             name = class_names[best_class_indices[0]]
                         else:
                             name = "Unknown"
@@ -114,5 +122,7 @@ def main():
             
             # cap.release()
             # cv2.destroyAllWindows()
+            
+            
 if __name__ == '__main__':
     main()
