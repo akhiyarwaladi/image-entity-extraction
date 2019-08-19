@@ -15,6 +15,9 @@ import cv2
 import collections
 from sklearn.svm import SVC 
 from detect_faces import detect_face, detect_tiny_face
+from keras.utils.data_utils import get_file
+from wide_resnet import WideResNet
+from keras import backend as K
 
 def main(): 
     parser = argparse.ArgumentParser()
@@ -26,7 +29,7 @@ def main():
     FACTOR = 0.709
     IMAGE_SIZE = 182
     INPUT_IMAGE_SIZE = 160
-    CLASSIFIER_PATH = 'Models/Entity/Entity_sample_nounknown.pkl'
+    CLASSIFIER_PATH = 'Models/Entity/Entity_margin_svm.pkl'
     VIDEO_PATH = args.path
     FACENET_MODEL_PATH = 'Models/facenet/20180402-114759.pb'
     
@@ -35,7 +38,14 @@ def main():
     with open(CLASSIFIER_PATH, 'rb') as file:
         model, class_names = pickle.load(file)
     print("Custom Classifier, Successfully loaded")
-            
+
+    # Load age and gender model
+    depth = 16
+    k = 8
+    margin = 0.4
+    weight_file = "Models/weights.28-3.73.hdf5"
+    model_age_gender = WideResNet(64, depth=depth, k=k)()
+    model_age_gender.load_weights(weight_file)        
             
     with tf.Graph().as_default():
         
@@ -59,13 +69,10 @@ def main():
             
             people_detected = set()
             person_detected = collections.Counter()
-            
-            # cap = cv2.VideoCapture(VIDEO_PATH)
-            
-#            while(cap.isOpened()):
-            # ret, frame = cap.read()
+
             
             frame = cv2.imread(VIDEO_PATH)
+            frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
 
             
             # bounding_boxes, _ = align.detect_face.detect_face(frame, MINSIZE, pnet, rnet, onet, THRESHOLD, FACTOR)
@@ -76,17 +83,41 @@ def main():
             print(len(bounding_boxes))
             print(bounding_boxes.shape)
             faces_found = bounding_boxes.shape[0]
+
+            entity = {}
+
+
             try:
                 if faces_found > 0:
                     det = bounding_boxes[:, 0:4]
                     bb = np.zeros((faces_found, 4), dtype=np.int32)
+                    unknown_faces = []
+                    unknown_coor = []
                     for i in range(faces_found):
                         bb[i][0] = det[i][0]
                         bb[i][1] = det[i][1]
                         bb[i][2] = det[i][2]
                         bb[i][3] = det[i][3]
+
+                        x, y = bb[i][0], bb[i][1]
+                        w = bb[i][2] - x
+                        h = bb[i][3] - y
+
+                        x_pad_size = round( w * 0.01 )
+                        y_pad_size = round( h * 0.01 )
+                        x -= x_pad_size
+                        y -= y_pad_size
+                        w += 2*x_pad_size
+                        h += 2*y_pad_size
+
+                        bb[i][0] = x
+                        bb[i][1] = y
+                        bb[i][2] = x+w
+                        bb[i][3] = y+h
+
                     
                         cropped = frame[bb[i][1]:bb[i][3], bb[i][0]:bb[i][2], :]
+                        cropped_ = frame[bb[i][1]:bb[i][3], bb[i][0]:bb[i][2]]
                         scaled = cv2.resize(cropped, (INPUT_IMAGE_SIZE, INPUT_IMAGE_SIZE), interpolation=cv2.INTER_CUBIC)
                         scaled = facenet.prewhiten(scaled)
                         scaled_reshape = scaled.reshape(-1, INPUT_IMAGE_SIZE, INPUT_IMAGE_SIZE, 3)
@@ -99,29 +130,92 @@ def main():
                         print("Name: {}, Probability: {}".format(best_name, best_class_probabilities))
                     
                         
-                        cv2.rectangle(frame, (bb[i][0], bb[i][1]), (bb[i][2], bb[i][3]), (0, 255, 0), 2)
-                        text_x = bb[i][0]
-                        text_y = bb[i][3] + 20  
+                        color = (0, 0, 0)
                         
-                        if best_class_probabilities > 0.5:
+                        if best_class_probabilities > 0.75:
+
                             name = class_names[best_class_indices[0]]
+                            
+
+                            if name == "unknown":
+
+                                name_entity = "{}_{}".format(name,i)
+                                unknown_faces.append(cv2.resize(np.copy(cropped_), (64, 64), interpolation=cv2.INTER_CUBIC))
+                                unknown_coor.append((bb[i][0], bb[i][1], bb[i][2], bb[i][3]))
+                                # color = (255, 255, 255)
+                            else:
+
+                                name_entity = name
+                                coor = (bb[i][0], bb[i][1], bb[i][2], bb[i][3])
+                                entity[coor] = name_entity
+                                # color = (0, 0, 255)
+
+                            # cv2.rectangle(frame, (bb[i][0], bb[i][1]), (bb[i][2], bb[i][3]), color, 2)
+                            # text_x = bb[i][0]
+                            # text_y = bb[i][3] + 20  
+
+                            # cv2.putText(frame, name, (text_x, text_y), cv2.FONT_HERSHEY_COMPLEX_SMALL,
+                            # 1, color, thickness=1, lineType=2)
+                            # cv2.putText(frame, str(round(best_class_probabilities[0], 3)), (text_x, text_y+17), cv2.FONT_HERSHEY_COMPLEX_SMALL,
+                            # 1, color, thickness=1, lineType=2)
+                            person_detected[best_name] += 1
+                            
+
                         else:
-                            name = "Unknown"
-                        cv2.putText(frame, name, (text_x, text_y), cv2.FONT_HERSHEY_COMPLEX_SMALL,
-                                        1, (255, 255, 255), thickness=1, lineType=2)
-                        cv2.putText(frame, str(round(best_class_probabilities[0], 3)), (text_x, text_y+17), cv2.FONT_HERSHEY_COMPLEX_SMALL,
-                                        1, (255, 255, 255), thickness=1, lineType=2)
-                        person_detected[best_name] += 1
-            except:
+                            unknown_faces.append(cv2.resize(np.copy(cropped_), (64, 64), interpolation=cv2.INTER_CUBIC))
+                            unknown_coor.append((bb[i][0], bb[i][1], bb[i][2], bb[i][3]))
+                            # cv2.rectangle(frame, (bb[i][0], bb[i][1]), (bb[i][2], bb[i][3]), (255, 255, 255), 2)
+                            # text_x = bb[i][0]
+                            # text_y = bb[i][3] + 20  
+                            name = "unknown"
+                            # name_entity = "{}_{}".format(name,i)
+                            # cv2.putText(frame, name, (text_x, text_y), cv2.FONT_HERSHEY_COMPLEX_SMALL,
+                            # 1, (255, 255, 255), thickness=1, lineType=2)
+                            # cv2.putText(frame, str(round(best_class_probabilities[0], 3)), (text_x, text_y+17), cv2.FONT_HERSHEY_COMPLEX_SMALL,
+                            # 1, (255, 255, 255), thickness=1, lineType=2)
+                            person_detected[best_name] += 1
+                            # entity[name_entity] = [bb[i][1], bb[i][3], bb[i][0], bb[i][2]]
+
+
+            except Exception as e:
+                print(e)
                 pass
-                
-            cv2.imshow('Face Recognition',frame)
-            cv2.waitKey(0)
-            # if cv2.waitKey(1) & 0xFF == ord('q'):
-            #     return
             
-            # cap.release()
-            # cv2.destroyAllWindows()
+          
+    unknown_faces_stack = np.stack(unknown_faces, axis=0)
+    print(unknown_faces_stack.shape)
+    print(type(unknown_faces_stack))
+    results = model_age_gender.predict(unknown_faces_stack)
+    print("hahah")
+    predicted_genders = results[0]
+    ages = np.arange(0, 101).reshape(101, 1)
+    predicted_ages = results[1].dot(ages).flatten()
+    print(predicted_genders)
+    print(predicted_ages)
+
+    for i in range(len(predicted_ages)):
+        label = "{}_{}".format(int(predicted_ages[i]), "M" if predicted_genders[i][0] < 0.5 else "F")
+        entity[unknown_coor[i]] = label
+
+
+    print(entity)
+
+
+    for key, value in entity.items():
+        if value.split("_")[-1] == "M" or value.split("_")[-1] == "F":
+            color = (255, 255, 255)
+        else:
+            color = (0, 0, 255)
+            
+        text_x = key[0]  
+        text_y = key[3] + 20 
+        cv2.rectangle(frame, (key[0], key[1]), (key[2], key[3]), color, 2)
+        cv2.putText(frame, value, (text_x, text_y), cv2.FONT_HERSHEY_COMPLEX_SMALL,
+        1, (255, 255, 255), thickness=1, lineType=2)
+
+    cv2.imshow('Face Recognition',frame)
+    cv2.waitKey(0)
+
             
             
 if __name__ == '__main__':

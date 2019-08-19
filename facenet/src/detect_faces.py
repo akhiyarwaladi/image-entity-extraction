@@ -1,8 +1,3 @@
-#!/usr/bin/python
-# -*- coding: utf-8 -*-
-# pylint: disable=C0103
-# pylint: disable=E1101
-
 import sys
 import time
 import numpy as np
@@ -16,36 +11,15 @@ import pickle
 import pylab as pl
 from scipy.special import expit
 
-import label_map_util
-import visualization_utils_color as vis_util
-
-MAX_INPUT_DIM = 5000.0
-
-
-
-# Path to frozen detection graph. This is the actual model that is used for the object detection.
-PATH_TO_CKPT = './Models/frozen_inference_graph_face.pb'
-
-# List of the strings that is used to add correct label for each box.
-PATH_TO_LABELS = './Models/face_label_map.pbtxt'
-
-NUM_CLASSES = 2
-
-label_map = label_map_util.load_labelmap(PATH_TO_LABELS)
-categories = label_map_util.convert_label_map_to_categories(label_map, max_num_classes=NUM_CLASSES, use_display_name=True)
-category_index = label_map_util.create_category_index(categories)
-
 def load_image_into_numpy_array(image):
   (im_width, im_height) = image.size
   return np.array(image.getdata()).reshape(
       (im_height, im_width, 3)).astype(np.uint8)
 
-# cap = cv2.VideoCapture("./media/test.mp4")
-# out = None
+
 def detect_face(image):
-  # parser = argparse.ArgumentParser()
-  # parser.add_argument('--path', help = 'Path of the video you want to test on.', default = 0)
-  # args = parser.parse_args()
+  # Path to frozen detection graph. This is the actual model that is used for the object detection.
+  PATH_TO_CKPT = './Models/frozen_inference_graph_face.pb'
 
   detection_graph = tf.Graph()
   with detection_graph.as_default():
@@ -81,24 +55,8 @@ def detect_face(image):
           feed_dict={image_tensor: image_np_expanded})
       elapsed_time = time.time() - start_time
       print('inference time cost: {}'.format(elapsed_time))
-      print(boxes.shape, boxes)
-      print(scores.shape, scores)
-      # print(classes.shape, classes)
-      # print(num_detections)
 
-      # # Visualization of the results of a detection.
-      # bboxes = vis_util.visualize_boxes_and_labels_on_image_array(
-
-      #     image,
-      #     np.squeeze(boxes),
-      #     np.squeeze(classes).astype(np.int32),
-      #     np.squeeze(scores),
-      #     category_index,
-      #     use_normalized_coordinates=True,
-      #     line_thickness=4)
-
-      # print(np.array(bboxes))
-      min_score_thresh=.6
+      min_score_thresh=.2
       boxes  = np.squeeze(boxes)
       scores = np.squeeze(scores)
       bboxes = []
@@ -112,12 +70,14 @@ def detect_face(image):
 
           bboxes.append([left, top, right, bottom])
           print(left, right, top, bottom)
-          cv2.imshow('Face Recognition',image_np[int(top):int(bottom), int(left):int(right)])
-          cv2.waitKey(0)
+          # cv2.imshow('Face Recognition',image_np[int(top):int(bottom), int(left):int(right)])
+          # cv2.waitKey(0)
 
       return np.array(bboxes)
 
 def detect_tiny_face(image, prob_thresh=0.5, nms_thresh=0.1, lw=3):
+  MAX_INPUT_DIM = 5000.0
+
   """Detect faces in images.
   Args:
     prob_thresh:
@@ -181,6 +141,7 @@ def detect_tiny_face(image, prob_thresh=0.5, nms_thresh=0.1, lw=3):
       min_scale = min(np.floor(np.log2(np.max(clusters_w[normal_idx] / raw_w))),
                       np.floor(np.log2(np.max(clusters_h[normal_idx] / raw_h))))
       max_scale = min(1.0, -np.log2(max(raw_h, raw_w) / MAX_INPUT_DIM))
+      print(min_scale, max_scale)
       scales_down = pl.frange(min_scale, 0, 1.)
       scales_up = pl.frange(0.5, max_scale, 0.5)
       scales_pow = np.hstack((scales_down, scales_up))

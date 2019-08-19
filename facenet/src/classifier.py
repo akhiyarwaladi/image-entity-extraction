@@ -36,6 +36,8 @@ import math
 import pickle
 from sklearn.svm import SVC
 from confusion_matrix import plot_confusion_matrix
+from sklearn.neighbors import LSHForest
+from sklearn.neighbors import KNeighborsClassifier
 
 def main(args):
   
@@ -93,7 +95,9 @@ def main(args):
             if (args.mode=='TRAIN'):
                 # Train classifier
                 print('Training classifier')
-                model = SVC(kernel='linear', probability=True)
+                # model = SVC(kernel='linear', probability=True)
+                # model = LSHForest(probability=True)
+                model = KNeighborsClassifier()
                 model.fit(emb_array, labels)
             
                 # Create a list of class names
