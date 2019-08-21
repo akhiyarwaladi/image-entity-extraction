@@ -19,9 +19,22 @@ from keras.utils.data_utils import get_file
 from wide_resnet import WideResNet
 from keras import backend as K
 
+sys.path.append('../gender-age')
+import face_model
+import datetime
+import mxnet as mx
+
+
+
 def main(): 
     parser = argparse.ArgumentParser()
     parser.add_argument('--path', help = 'Path of the video you want to test on.', default = 0)
+    parser.add_argument('--image-size', default='112,112', help='')
+    parser.add_argument('--image', default='Tom_Hanks_54745.png', help='')
+    parser.add_argument('--model', default='../gender-age/model/model,0', help='path to load model.')
+    parser.add_argument('--gpu', default=0, type=int, help='gpu id')
+    parser.add_argument('--det', default=0, type=int, help='mtcnn option, 1 means using R+O, 0 means detect from begining')
+
     args = parser.parse_args()
     
     MINSIZE = 20
@@ -39,13 +52,14 @@ def main():
         model, class_names = pickle.load(file)
     print("Custom Classifier, Successfully loaded")
 
-    # Load age and gender model
-    depth = 16
-    k = 8
-    margin = 0.4
-    weight_file = "Models/weights.28-3.73.hdf5"
-    model_age_gender = WideResNet(64, depth=depth, k=k)()
-    model_age_gender.load_weights(weight_file)        
+    # # Load age and gender model
+    # depth = 16
+    # k = 8
+    # margin = 0.4
+    # weight_file = "Models/weights.28-3.73.hdf5"
+    # model_age_gender = WideResNet(64, depth=depth, k=k)()
+    # model_age_gender.load_weights(weight_file)     
+    model_age_gender = face_model.FaceModel(args)   
             
     with tf.Graph().as_default():
         
@@ -143,6 +157,16 @@ def main():
                                 unknown_faces.append(cv2.resize(np.copy(cropped_), (64, 64), interpolation=cv2.INTER_CUBIC))
                                 unknown_coor.append((bb[i][0], bb[i][1], bb[i][2], bb[i][3]))
                                 # color = (255, 255, 255)
+
+                                aligned = np.transpose(cropped_, (2,0,1))
+                                input_blob = np.expand_dims(aligned, axis=0)
+                                data = mx.nd.array(input_blob)
+                                db = mx.io.DataBatch(data=(data,))
+                               
+                                gender, age =  model_age_gender.get_ga(db)
+                                print(gender, age)
+                                coor = (bb[i][0], bb[i][1], bb[i][2], bb[i][3])
+                                entity[coor] = "{}_{}".format("F" if gender == 0 else "M",age)
                             else:
 
                                 name_entity = name
@@ -168,6 +192,15 @@ def main():
                             # text_x = bb[i][0]
                             # text_y = bb[i][3] + 20  
                             name = "unknown"
+                            aligned = np.transpose(cropped_, (2,0,1))
+                            input_blob = np.expand_dims(aligned, axis=0)
+                            data = mx.nd.array(input_blob)
+                            db = mx.io.DataBatch(data=(data,))
+
+                            gender, age =  model_age_gender.get_ga(db)
+                            print(gender, age)
+                            coor = (bb[i][0], bb[i][1], bb[i][2], bb[i][3])
+                            entity[coor] = "{}_{}".format("F" if gender == 0 else "M",age)
                             # name_entity = "{}_{}".format(name,i)
                             # cv2.putText(frame, name, (text_x, text_y), cv2.FONT_HERSHEY_COMPLEX_SMALL,
                             # 1, (255, 255, 255), thickness=1, lineType=2)
@@ -182,20 +215,20 @@ def main():
                 pass
             
           
-    unknown_faces_stack = np.stack(unknown_faces, axis=0)
-    print(unknown_faces_stack.shape)
-    print(type(unknown_faces_stack))
-    results = model_age_gender.predict(unknown_faces_stack)
-    print("hahah")
-    predicted_genders = results[0]
-    ages = np.arange(0, 101).reshape(101, 1)
-    predicted_ages = results[1].dot(ages).flatten()
-    print(predicted_genders)
-    print(predicted_ages)
+    # unknown_faces_stack = np.stack(unknown_faces, axis=0)
+    # print(unknown_faces_stack.shape)
+    # print(type(unknown_faces_stack))
+    # results = model_age_gender.predict(unknown_faces_stack)
+    # print("hahah")
+    # predicted_genders = results[0]
+    # ages = np.arange(0, 101).reshape(101, 1)
+    # predicted_ages = results[1].dot(ages).flatten()
+    # print(predicted_genders)
+    # print(predicted_ages)
 
-    for i in range(len(predicted_ages)):
-        label = "{}_{}".format(int(predicted_ages[i]), "M" if predicted_genders[i][0] < 0.5 else "F")
-        entity[unknown_coor[i]] = label
+    # for i in range(len(predicted_ages)):
+    #     label = "{}_{}".format(int(predicted_ages[i]), "M" if predicted_genders[i][0] < 0.5 else "F")
+    #     entity[unknown_coor[i]] = label
 
 
     print(entity)
